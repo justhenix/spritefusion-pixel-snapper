@@ -39,15 +39,15 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            k_colors: 16,
+            k_colors: 64,
             k_seed: 42,
             input_path: "samples/2/skeleton.png".to_string(),
             output_path: "samples/2/skeleton_fixed_clean2.png".to_string(),
             max_kmeans_iterations: 15,
             peak_threshold_multiplier: 0.2,
-            peak_distance_filter: 4,
+            peak_distance_filter: 1,
             walker_search_window_ratio: 0.35,
-            walker_min_search_window: 2.0,
+            walker_min_search_window: 1.0,
             walker_strength_threshold: 0.5,
             min_cuts_per_axis: 4,
             fallback_target_segments: 64,
@@ -153,9 +153,16 @@ fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Res
         &config,
     );
 
-    println!("Output size: {}x{}", col_cuts.len() - 1, row_cuts.len() - 1);
+    println!(
+        "Grid size: {}x{}, Output size: {}x{}",
+        col_cuts.len() - 1,
+        row_cuts.len() - 1,
+        width,
+        height
+    );
 
-    let output_img = resample(&quantized_img, &col_cuts, &row_cuts)?;
+    let small_img = resample(&quantized_img, &col_cuts, &row_cuts)?;
+    let output_img = image::imageops::resize(&small_img, width, height, image::imageops::FilterType::Nearest);
 
     // Returns bytes for both implementations
     let mut output_bytes = Vec::new();
@@ -305,10 +312,14 @@ fn quantize_image(img: &RgbaImage, config: &Config) -> Result<RgbaImage> {
     }
 
     fn dist_sq(p: &[f32; 3], c: &[f32; 3]) -> f32 {
+        let rmean = (p[0] + c[0]) / 2.0;
         let dr = p[0] - c[0];
         let dg = p[1] - c[1];
         let db = p[2] - c[2];
-        dr * dr + dg * dg + db * db
+        let weight_r = 2.0 + rmean / 256.0;
+        let weight_g = 4.0;
+        let weight_b = 2.0 + (255.0 - rmean) / 256.0;
+        weight_r * dr * dr + weight_g * dg * dg + weight_b * db * db
     }
 
     let mut centroids: Vec<[f32; 3]> = Vec::with_capacity(k);
